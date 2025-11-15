@@ -1,0 +1,97 @@
+---
+title: "covid19_spread"
+output: html_document
+date: "2025-11-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+```{r}
+{df <- read.csv("owid-covid-data.csv")}
+df
+
+```
+
+```{r}
+selected_countries <- c("World", "Ukraine", "United States",
+                        "Brazil", "Australia", "France")
+
+df_filtered <- df[df$location %in% selected_countries, ]
+
+df_small <- df_filtered[, c(
+  "date", 
+  "location",
+  "new_cases_smoothed_per_million",
+  "new_deaths_smoothed_per_million",
+  "people_fully_vaccinated_per_hundred",
+  "stringency_index"
+)]
+df_small$date <- as.Date(df_small$date)
+head(df_small)
+
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+colSums(is.na(df_small))
+```
+
+```{r, fig.width=14, fig.height=10}
+ggplot(df_small, aes(x = date,
+                        y = new_cases_smoothed_per_million,
+                        color = location)) +
+  geom_line(size = 1, na.rm = TRUE) +
+  scale_color_brewer(palette = "Set1") +
+  facet_wrap(~location, scales = "free_y", ncol = 2) +
+  theme_minimal(base_size = 16) +
+  labs(title = "COVID-19 Case Trends by Country",
+       x = "Date",
+       y = "New Cases per Million",
+       color = "Country") +
+  theme(legend.position = "none")
+```
+
+```{r, fig.width=14, fig.height=8}
+ggplot(df_small, aes(x = date,
+                     y = people_fully_vaccinated_per_hundred,
+                     color = location)) +
+  geom_line(size = 1.2, na.rm = TRUE) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal(base_size = 16) +
+  labs(title = "Vaccination Progress in Selected Countries",
+       x = "Date",
+       y = "Fully Vaccinated per Hundred",
+       color = "Country") +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+```{r, fig.width=16, fig.height=12}
+ggplot(df_small, aes(x = date,
+                     y = new_deaths_smoothed_per_million,
+                     color = location)) +
+  geom_line(size = 1, na.rm = TRUE) +
+  facet_wrap(~ location, scales = "free_y", ncol = 2) +
+  theme_minimal(base_size = 16) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "COVID-19 Death Trends by Country",
+    x = "Date",
+    y = "New Deaths per Million"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 20),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
