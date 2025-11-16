@@ -20,18 +20,14 @@ We decided to investigate the connection between vaccination and mortality.
 
 For this we are using such random variables:
 
--   **new_cases_smoothed_per_million** - new confirmed cases of COVID-19 (7-day smoothed) per 1,000,000 people;
--   **new_deaths_smoothed_per_million** - new deaths attributed to COVID-19 (7-day smoothed) per 1,000,000 people;
--   **people_fully_vaccinated_per_hundred** - total number of people who received all doses prescribed by the initial vaccination protocol per 100 people in the total population;
--   **stringency_index** - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response).
+-   `new_cases_smoothed_per_million` - new confirmed cases of COVID-19 (7-day smoothed) per 1,000,000 people;
+-   `new_deaths_smoothed_per_million` - new deaths attributed to COVID-19 (7-day smoothed) per 1,000,000 people;
+-   `people_fully_vaccinated_per_hundred` - total number of people who received all doses prescribed by the initial vaccination protocol per 100 people in the total population;
+-   `stringency_index` - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response).
 
 ```{r}
 {df <- read.csv("owid-covid-data.csv")}
-<<<<<<< HEAD
-df
-=======
 head(df)
->>>>>>> 370b92c (Hypothesis and description for the plots added)
 ```
 
 ```{r}
@@ -70,8 +66,8 @@ ggplot(df_small, aes(x = date,
        color = "Country") +
   theme(legend.position = "none")
 ```
-This graph shows change of the `new_cases_smoothed_per_milion` random variable with time for 5 chosen country and a world.
 
+This graph shows change of the `new_cases_smoothed_per_milion` random variable with time for 5 chosen country and a world.
 
 ```{r, fig.width=14, fig.height=8}
 ggplot(df_small, aes(x = date,
@@ -89,8 +85,8 @@ ggplot(df_small, aes(x = date,
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 ```
-This graph shows change of the `people_fully_vaccinated_per_hundred` random variable with time for 5 chosen country and a world.
 
+This graph shows change of the `people_fully_vaccinated_per_hundred` random variable with time for 5 chosen country and a world.
 
 ```{r, fig.width=16, fig.height=12}
 ggplot(df_small, aes(x = date,
@@ -111,8 +107,8 @@ ggplot(df_small, aes(x = date,
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 ```
-This graph shows change of the `new_deaths_smoothed_per_million` random variable with time for 5 chosen country and a world.
 
+This graph shows change of the `new_deaths_smoothed_per_million` random variable with time for 5 chosen country and a world.
 
 ```{r}
 date <- "2021-08-01"
@@ -128,6 +124,8 @@ snapshot <- df %>%
          people_fully_vaccinated_per_hundred,
          new_deaths_smoothed_per_million)
 
+cat("Number of countries with available data for this date: ", length(df))
+
 ggplot(snapshot,
        aes(x = people_fully_vaccinated_per_hundred,
            y = new_deaths_smoothed_per_million)) +
@@ -139,12 +137,12 @@ ggplot(snapshot,
     y = "New Deaths per Million"
   ) +
   theme_minimal()
-
-cat("Number of countries with available data for this date: ", length(df))
 ```
 On this graph we tried to get initial insight about impact of vaccines on a death rate. Each point represents a country on a specific date (August 1, 2021). The X-axis shows the percentage of the population fully vaccinated `people_fully_vaccinated_per_hundred`, while the Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
+
 # Hypothesis
+
 From the previous graph, we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
 $H_0$: Vaccination rate has no effect on death rate.
