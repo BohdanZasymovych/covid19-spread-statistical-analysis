@@ -26,7 +26,11 @@ For this we are using such random variables:
 
 ```{r}
 {df <- read.csv("owid-covid-data.csv")}
+<<<<<<< HEAD
 df
+=======
+head(df)
+>>>>>>> 370b92c (Hypothesis and description for the plots added)
 ```
 
 ```{r}
@@ -66,6 +70,8 @@ ggplot(df_small, aes(x = date,
        color = "Country") +
   theme(legend.position = "none")
 ```
+This graph shows change of the `new_cases_smoothed_per_milion` random variable with time for 5 chosen country and a world.
+
 
 ```{r, fig.width=14, fig.height=8}
 ggplot(df_small, aes(x = date,
@@ -83,6 +89,8 @@ ggplot(df_small, aes(x = date,
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 ```
+This graph shows change of the `people_fully_vaccinated_per_hundred` random variable with time for 5 chosen country and a world.
+
 
 ```{r, fig.width=16, fig.height=12}
 ggplot(df_small, aes(x = date,
@@ -103,3 +111,13 @@ ggplot(df_small, aes(x = date,
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 ```
+This graph shows change of the `new_deaths_smoothed_per_million` random variable with time for 5 chosen country and a world.
+
+
+# Hypothesis
+
+We want to test if increasing vaccination rate reduces death rate
+
+$H_0$: Vaccination rate has no effect on death rate.
+
+$H_1$: Increasing vaccination rate reduces the death rate.
