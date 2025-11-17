@@ -8,7 +8,16 @@ date: "2025-11-15"
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(dplyr)
+library(knitr)
 ```
+
+### Team members
+
+-   **Bohdan Zasymovych**
+
+-   **Solomiia Gadiichuk**
+
+-   **Iryna Svyrydenko**
 
 ## Statistical Analysis of COVID-19 Spread
 
@@ -27,7 +36,7 @@ For this we are using such random variables:
 
 ```{r}
 {df <- read.csv("owid-covid-data.csv")}
-head(df)
+
 ```
 
 ```{r}
@@ -45,11 +54,8 @@ df_small <- df_filtered[, c(
   "stringency_index"
 )]
 df_small$date <- as.Date(df_small$date)
-head(df_small)
-```
+kable(head(df_small, 10), caption = "Preview of Filtered COVID-19 Data")
 
-```{r}
-colSums(is.na(df_small))
 ```
 
 ```{r, fig.width=14, fig.height=10}
@@ -57,7 +63,15 @@ ggplot(df_small, aes(x = date,
                         y = new_cases_smoothed_per_million,
                         color = location)) +
   geom_line(linewidth = 1, na.rm = TRUE) +
-  scale_color_brewer(palette = "Set1") +
+    scale_color_manual(values = c(
+    "Australia" = "#E41A1C",      
+    "Brazil" = "#377EB8",         
+    "France" = "#4DAF4A",         
+    "Ukraine" = "#984EA3",        
+    "United States" = "#FF7F00",  
+    "World" = "black"             
+  )) +
+  
   facet_wrap(~location, scales = "free_y", ncol = 2) +
   theme_minimal(base_size = 16) +
   labs(title = "COVID-19 Case Trends by Country",
@@ -95,7 +109,14 @@ ggplot(df_small, aes(x = date,
   geom_line(size = 1, na.rm = TRUE) +
   facet_wrap(~ location, scales = "free_y", ncol = 2) +
   theme_minimal(base_size = 16) +
-  scale_color_brewer(palette = "Set1") +
+    scale_color_manual(values = c(
+    "Australia"      = "#E41A1C",   
+    "Brazil"         = "#377EB8",  
+    "France"         = "#4DAF4A",   
+    "Ukraine"        = "#984EA3",   
+    "United States"  = "#FF7F00",   
+    "World"          = "black"     
+  )) +
   labs(
     title = "COVID-19 Death Trends by Country",
     x = "Date",
@@ -138,8 +159,8 @@ ggplot(snapshot,
   ) +
   theme_minimal()
 ```
-On this graph we tried to get initial insight about impact of vaccines on a death rate. Each point represents a country on a specific date (August 1, 2021). The X-axis shows the percentage of the population fully vaccinated `people_fully_vaccinated_per_hundred`, while the Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
+On this graph we tried to get initial insight about impact of vaccines on a death rate. Each point represents a country on a specific date (August 1, 2021). The X-axis shows the percentage of the population fully vaccinated `people_fully_vaccinated_per_hundred`, while the Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
 # Hypothesis
 
