@@ -162,10 +162,43 @@ ggplot(snapshot,
 
 On this graph we tried to get initial insight about impact of vaccines on a death rate. Each point represents a country on a specific date (August 1, 2021). The X-axis shows the percentage of the population fully vaccinated `people_fully_vaccinated_per_hundred`, while the Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
-# Hypothesis
+```{r}
+df_hypothesis2 <- df %>%
+  filter(!is.na(aged_65_older), 
+         !is.na(new_deaths_smoothed_per_million),
+         !is.na(continent), continent != "") %>%
+  group_by(location) %>%
+  summarise(
+    aged_65_older = max(aged_65_older, na.rm = TRUE),
+    total_deaths_per_million = max(total_deaths_per_million, na.rm = TRUE)
+  )
 
-From the previous graph, we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
+ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  labs(
+    title = "Relationships between population age and Covid-19 mortality",
+    x = "Percentage of people over the age of 65",
+    y = "New deaths smoothed per million"
+  ) +
+  theme_minimal()
+```
+
+In this graph the X-axis shows the percentage of the people over the age of 65 `aged_65_older`, and Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
+
+# Hypotheses
+
+### Our first hypothesis
+
+From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
 $H_0$: Vaccination rate has no effect on death rate.
 
 $H_1$: Increasing vaccination rate reduces the death rate.
+
+### Our second hypothesis
+
+In the graph "Relationships between population age and Covid-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
+
+$H_0$: Countries with a higher proportion of people over 65 have higher COVID-19 death rates..
+
+$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates..
