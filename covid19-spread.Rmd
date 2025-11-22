@@ -170,10 +170,10 @@ df_hypothesis2 <- df %>%
   group_by(location) %>%
   summarise(
     aged_65_older = max(aged_65_older, na.rm = TRUE),
-    total_deaths_per_million = max(total_deaths_per_million, na.rm = TRUE)
+    new_deaths_smoothed_per_million = max(new_deaths_smoothed_per_million, na.rm = TRUE)
   )
 
-ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
+ggplot(df_hypothesis2, aes(x = aged_65_older, y = new_deaths_smoothed_per_million)) +
   geom_point(alpha = 0.6, color = "darkgreen") +
   labs(
     title = "Relationships between population age and Covid-19 mortality",
@@ -191,9 +191,22 @@ In this graph the X-axis shows the percentage of the people over the age of 65 `
 
 From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
-$H_0$: Vaccination rate has no effect on death rate.
+Consider next linear model:
 
-$H_1$: Increasing vaccination rate reduces the death rate.
+$$
+Y = a + b_1X_1 + ...+b_nX_n + \epsilon
+$$
+
+Where:\
+$Y$ - `new_deaths_smoothed_per_million`\
+$X_1$ - `people_fully_vaccinated_per_hundred`\
+$X_2, \dots, X_n$ - independent variables which has impact on $Y$
+
+Then hypothesis is:
+
+$H_0$: $b_1 = 0$, vaccination rate has no effect on death rate.
+
+$H_1$: $b_1 < 0$, increasing vaccination rate reduces the death rate.
 
 ### Our second hypothesis
 
