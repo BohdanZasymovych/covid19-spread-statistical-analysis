@@ -34,6 +34,12 @@ For this we are using such random variables:
 -   `people_fully_vaccinated_per_hundred` - total number of people who received all doses prescribed by the initial vaccination protocol per 100 people in the total population;
 -   `stringency_index` - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response).
 
+### Handling of the missing data
+
+Missing data in columns corresponding to new cases and deaths was already handled by the authors of the dataset. To create smoothed columns, a 7-day rolling average was used. A 7-day rolling average is calculated for each day using data from that day and the previous six days. If the current day's value is missing, the average is computed from the available data within that window. This helps handle missing data and reduce artificial spikes (for example, fewer cases may be reported on weekends, while on Monday cases from the weekend are reported, creating a spike).
+
+Missing data in the column `people_fully_vaccinated_per_hundred` was handled by ourselves. Many countries report vaccinations only once per week, and values for other days are NaN. To address this, we used linear interpolation. In linear interpolation, missing values between two known points are estimated by assuming that the change between them follows a straight line, so the missing value is placed proportionally between the two known values.
+
 ```{r}
 {df <- read.csv("owid-covid-data.csv")}
 
@@ -170,10 +176,10 @@ df_hypothesis2 <- df %>%
   group_by(location) %>%
   summarise(
     aged_65_older = max(aged_65_older, na.rm = TRUE),
-    new_deaths_smoothed_per_million = max(new_deaths_smoothed_per_million, na.rm = TRUE)
+    total_deaths_per_million = max(total_deaths_per_million, na.rm = TRUE)
   )
 
-ggplot(df_hypothesis2, aes(x = aged_65_older, y = new_deaths_smoothed_per_million)) +
+ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
   geom_point(alpha = 0.6, color = "darkgreen") +
   labs(
     title = "Relationships between population age and Covid-19 mortality",
@@ -185,28 +191,25 @@ ggplot(df_hypothesis2, aes(x = aged_65_older, y = new_deaths_smoothed_per_millio
 
 In this graph the X-axis shows the percentage of the people over the age of 65 `aged_65_older`, and Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
+# Insights
+
+-   Across all selected countries, we observe several waves of COVID-19 infections, with the strongest and most synchronized global surge occurring in early 2022.
+
+-   All countries began vaccination campaigns around early 2021, but the speed of rollout differed substantially.
+
+-   Death rates follow a similar wave pattern as cases but with generally smaller magnitudes, and they also show a sharp decline after early 2022.
+
+-   After 2022, both case numbers and death numbers drop significantly across all countries, indicating a clear long-term reduction in COVID-19 transmission and severity.
+
 # Hypotheses
 
 ### Our first hypothesis
 
 From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
-Consider next linear model:
+$H_0$: Vaccination rate has no effect on death rate.
 
-$$
-Y = a + b_1X_1 + ...+b_nX_n + \epsilon
-$$
-
-Where:\
-$Y$ - `new_deaths_smoothed_per_million`\
-$X_1$ - `people_fully_vaccinated_per_hundred`\
-$X_2, \dots, X_n$ - independent variables which has impact on $Y$
-
-Then hypothesis is:
-
-$H_0$: $b_1 = 0$, vaccination rate has no effect on death rate.
-
-$H_1$: $b_1 < 0$, increasing vaccination rate reduces the death rate.
+$H_1$: Increasing vaccination rate reduces the death rate.
 
 ### Our second hypothesis
 
