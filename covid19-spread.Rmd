@@ -9,6 +9,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(dplyr)
 library(knitr)
+library(zoo)
+library(tidyr)
+library(fixest)
 ```
 
 ### Team members
@@ -19,7 +22,7 @@ library(knitr)
 
 -   **Iryna Svyrydenko**
 
-## Statistical Analysis of COVID-19 Spread
+# Statistical Analysis of COVID-19 Spread
 
 ### The aim of this project is to analyze open data about Covid-19.
 
@@ -38,16 +41,18 @@ For this we are using such random variables:
 
 Missing data in columns corresponding to new cases and deaths was already handled by the authors of the dataset. To create smoothed columns, a 7-day rolling average was used. A 7-day rolling average is calculated for each day using data from that day and the previous six days. If the current day's value is missing, the average is computed from the available data within that window. This helps handle missing data and reduce artificial spikes (for example, fewer cases may be reported on weekends, while on Monday cases from the weekend are reported, creating a spike).
 
-Missing data in the column `people_fully_vaccinated_per_hundred` was handled by ourselves. Many countries report vaccinations only once per week, and values for other days are NaN. To address this, we used linear interpolation. In linear interpolation, missing values between two known points are estimated by assuming that the change between them follows a straight line, so the missing value is placed proportionally between the two known values.
+## Data preparation for visualization
 
 ```{r}
-{df <- read.csv("owid-covid-data.csv")}
-
+df <- read.csv("owid-covid-data.csv")
+head(df)
 ```
 
 ```{r}
-selected_countries <- c("World", "Ukraine", "United States",
-                        "Brazil", "Australia", "France")
+# selected_countries <- c("World", "Ukraine", "United States",
+#                         "Brazil", "Australia", "France")
+
+selected_countries <- c("World", "United States", "India", "Sweden", "Congo", "Brazil")
 
 df_filtered <- df[df$location %in% selected_countries, ]
 
@@ -57,7 +62,7 @@ df_small <- df_filtered[, c(
   "new_cases_smoothed_per_million",
   "new_deaths_smoothed_per_million",
   "people_fully_vaccinated_per_hundred",
-  "stringency_index"
+  "total_deaths_per_million"
 )]
 df_small$date <- as.Date(df_small$date)
 kable(head(df_small, 10), caption = "Preview of Filtered COVID-19 Data")
@@ -72,8 +77,8 @@ ggplot(df_small, aes(x = date,
     scale_color_manual(values = c(
     "Australia" = "#E41A1C",      
     "Brazil" = "#377EB8",         
-    "France" = "#4DAF4A",         
-    "Ukraine" = "#984EA3",        
+    "Greece" = "#4DAF4A",         
+    "Congo" = "#984EA3",        
     "United States" = "#FF7F00",  
     "World" = "black"             
   )) +
@@ -203,7 +208,7 @@ In this graph the X-axis shows the percentage of the people over the age of 65 `
 
 # Hypotheses
 
-### Our first hypothesis
+# Our first hypothesis
 
 From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
@@ -211,7 +216,387 @@ $H_0$: Vaccination rate has no effect on death rate.
 
 $H_1$: Increasing vaccination rate reduces the death rate.
 
-### Our second hypothesis
+# Testing first hypothesis
+
+## Data preparation for test
+
+Leaving only the required columns and restricting the data to the period from 2021-01-01 to 2021-12-31. This range was chosen because the visualization stage showed that vaccination activity was highest during this interval.
+
+```{r}
+df = df[, c("iso_code", "date", "new_cases_smoothed_per_million", "new_deaths_smoothed_per_million", "people_fully_vaccinated_per_hundred")]
+
+df$date <- as.Date(df$date)
+df <- df[df$date >= "2021-01-01" & df$date <= "2021-12-31", ]
+```
+
+Filtering the dataset to remove rows with N/As in `new_cases_smoothed_per_million` and `new_deaths_smoothed_per_million`. The dataset also included aggregated world regions, which were excluded except for the overall global entry.
+
+```{r}
+na_counts_list <- as.list(colSums(is.na(df)))
+cat("Number of N/A in the original dataset per columns:\n")
+na_counts_list
+
+df_filtered <- df %>%
+  filter(!grepl("^OWID_", iso_code) | iso_code == "OWID_WRL")
+
+
+df_na <- df_filtered %>% 
+  filter(is.na(new_cases_smoothed_per_million))
+
+bad_iso <- unique(df_na$iso_code)
+
+df_filtered <- df_filtered %>% 
+  filter(!iso_code %in% bad_iso)
+
+# Country with BES iso code were removed since for some reason data for it still contained single N/A value after filtering
+df_filtered <- df_filtered %>% 
+  filter(!iso_code == "BES")
+
+
+na_counts_list_filtered <- as.list(colSums(is.na(df_filtered)))
+cat("Number of N/A in the filtered dataset per columns:\n")
+na_counts_list_filtered
+```
+
+The column `people_fully_vaccinated_per_hundred` contained missing values because many countries did not report vaccination rates daily. Linear interpolation was applied to fill these gaps, but only for countries where interpolation could provide a reliable estimate. Countries were selected based on their average reporting gap, keeping only those reporting on average at least once every two weeks. After interpolation, values before the first report were set to zero, and values after the last report were filled with the final reported value.
+
+Calculate mean gaps between vaccination reports by countries
+
+```{r}
+threshold_gap_days <- 14
+
+mean_gaps <- df_filtered %>%
+  group_by(iso_code) %>%
+  filter(!is.na(people_fully_vaccinated_per_hundred)) %>%
+  arrange(date) %>%
+  mutate(gap = as.numeric(date - lag(date))) %>%
+  summarise(mean_gap = mean(gap, na.rm = TRUE), .groups = "drop")
+
+good_countries <- mean_gaps %>%
+  filter(mean_gap <= threshold_gap_days) %>%
+  pull(iso_code)
+
+df_filtered_vaccinations <- df_filtered %>%
+  filter(iso_code %in% good_countries)
+
+head(mean_gaps)
+```
+
+Applying linear interpolation
+
+```{r}
+df_interpolated <- df_filtered_vaccinations %>%
+  group_by(iso_code) %>%
+  arrange(date) %>%
+
+  mutate(
+    pvac = na.approx(
+      people_fully_vaccinated_per_hundred,
+      x = date,
+      na.rm = FALSE
+    )
+  ) %>%
+
+  mutate(first_non_na_index = match(TRUE, !is.na(pvac))) %>%
+
+  mutate(
+    pvac = ifelse(row_number() < first_non_na_index, 0, pvac)
+  ) %>%
+
+  fill(pvac, .direction = "down") %>%
+
+  mutate(people_fully_vaccinated_per_hundred = pvac) %>%
+
+  select(-pvac, -first_non_na_index) %>%
+
+  ungroup() %>%
+  arrange(iso_code, date)
+```
+
+```{r}
+na_counts_list_final_filtered <- as.list(colSums(is.na(df_interpolated)))
+cat("Number of N/A in the final interpolated dataset per columns:\n")
+na_counts_list_final_filtered
+
+cat("\n\n")
+
+cat("Number of countries/regions before and after filtering:\n")
+cat("Before: ", length(unique(df$iso_code)), "\n")
+cat("After: ", length(unique(df_interpolated$iso_code)))
+
+head(df_interpolated)
+```
+
+After applying all filtering steps, we obtained a dataset without any N/A values and with a reduced number of countries, while still retaining enough for representative results.
+
+# Testing
+
+## Linear regression
+
+For testing we are using simple linear regression on data from single country. `new_deaths_smoothed_per_million` in the equation is dependent variable and `people_fully_vaccinated_per_hundred` - independent.
+
+Equation:
+
+$$
+Y_t = \beta_0 + \beta_1 X_t + \epsilon
+$$
+
+Where:\
+$Y_t$ - `new_deaths_smoothed_per_million` on day $t$\
+$X_t$ - `people_fully_vaccinated_per_hundred` on day $t$\
+$\beta_0$ - intercept\
+$\beta_1$ - slope, coefficient we are testing for being statistically significantly less than 0\
+$\epsilon$ - error term, it captures everything affecting deaths except number of vaccinations: number of cases, seasons, reporting delays, random noise, etc
+
+To conduct a test we are choosing some fixed country and considering number of new deaths and number of vaccinations on each day.
+
+**Hypothesis:**
+
+$H_0$: $\beta_1 = 0$.
+
+$H_1$: $\beta_1 < 0$.
+
+**Estimator for coefficient** $\beta_1$:
+
+$$
+\hat{\beta}_1 = \frac{\sum_{t=1}^{T} (X_t - \overline{X})(Y_t - \overline{Y})}{\sum_{t=1}^{T} (X_t - \overline{X})^2}
+$$
+
+**Estimator for the sum of squared residuals:**
+
+$$
+\hat{R} = \sum \left( Y_t - \hat{Y_t} \right)^2
+$$
+
+**Estimator for variance (**$\sigma^2$):
+
+$$
+\hat{\sigma}^2 = \frac{\hat{R}}{T-2}
+$$
+
+**Test statistic under** $H_0$:
+
+$$
+T(\textbf{X}) = \frac{\hat{\beta}_1}{\hat{\sigma}} \sim \mathcal{T}_{T-2}
+$$
+
+**Critical region:**
+
+$$
+C_\alpha = \left \{ \textbf{x} \in R^n \; | \; t(\textbf{x}) < t_{\alpha} \right \}
+$$
+
+**Where:**\
+$\textbf{x}$ - given sample\
+$t(\textbf{x})$ - realization of test statistic for a given sample\
+$t_\alpha$ - quantile of t-student distribution of level $\alpha$
+
+For next tests we conducted we are choosing maximal probability of type I error $\alpha=0.01$. If p-value of a test is smaller than $0.01$ we are rejecting $H_0$
+
+Since our model can be applied only for a single country/region we have choosen next: world, USA, India, Sweden, Congo, Brazil. We were trying to choose countries with different development levels and from different regions to get more reliable insight.
+
+### World
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "OWID_WRL")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is less than $0$ ($\approx -0.013$), p-value is significantly smaller than $0.01$ ($\approx <2e-16$). We reject $H_0$.
+
+### United States
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "USA")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is less than $0$ ($\approx -0.067$), p-value is significantly smaller than $0.01$ ($\approx <2e-16$). We reject $H_0$.
+
+### India
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "IND")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is less than $0$ ($\approx -0.018$), p-value is significantly smaller than $0.01$ ($\approx 3.81e-07$). We reject $H_0$.
+
+### Sweden
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "SWE")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is less than $0$ ($\approx -0.052$), p-value is significantly smaller than $0.01$ ($\approx <2e-16$). We reject $H_0$.
+
+### Congo
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "COD")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is greater than $0$ ($\approx 0.015$), but p-value is significantly higher than $0.01$ ($\approx 0.67$). We do not reject $H_0$.
+
+### Brazil
+
+```{r}
+df_country <- subset(df_interpolated, iso_code == "BRA")
+
+model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
+print(summary(model))
+```
+
+```{r}
+plot(df_country$people_fully_vaccinated_per_hundred,
+     df_country$new_deaths_smoothed_per_million,
+     xlab = "People Fully Vaccinated (%)",
+     ylab = "New Deaths Smoothed per Million",
+     main = "Vaccination vs COVID-19 Deaths",
+     pch = 19, col = "blue")
+
+# Add regression line
+abline(model, col = "red", lwd = 2)
+```
+
+Estimated coefficient is less than $0$ ($\approx -0.124$), p-value is significantly smaller than $0.01$ ($\approx <2e-16$). We reject $H_0$.
+
+## Results
+
+For the world-level data, the estimated slope coefficient for vaccination is negative and the p-value is far below $0.01$. Therefore, we reject $H_0$ and conclude that, in the aggregated global series, higher vaccination levels are statistically associated with lower death rates.
+
+For individual countries, the same test rejects $H_0$ for all countries except Congo. Only Congo shows a p-value above $0.01$, so for this country we do not reject $H_0$.
+
+## Biases of the Model
+
+The linear regression model used in the analysis is straightforward and easy to interpret, but it introduces several important biases. First, it assumes a strictly linear relationship between vaccination levels and death rates, which may not reflect the true dynamics of an epidemic. Second, the model treats observations as independent, while real-world time series has strong autocorrelation and temporal structure that violate this assumption. Third, the model does not control for key confounding factors such as number of cases, reporting practices, demographic differences, healthcare capacity, or government interventions. Ignoring these variables can lead to omitted‐variable bias and distort the estimated effect of vaccination. Additionally, this model is limited in that it can only test the hypothesis for a single country at a time. It does not provide a way to simultaneously analyze all countries, which restricts our ability to draw conclusions about global trends or compare countries directly. These limitations mean that the results should be interpreted cautiously, as the model captures only a simplified view of a complex epidemiological process.
+
+## Ways to improve a model
+
+### Multiple regression
+
+One way to improve the model is to use multiple regression, where we include additional relevant predictors alongside vaccination. For example, we can control for the number of COVID-19 cases which has very great impact on number of cases. This allows the model to isolate the effect of vaccination on deaths more accurately, by accounting for other variables that also influence the outcome.
+
+By including multiple predictors, we reduce bias in the estimated coefficients and can better understand the relative contribution of each factor to the observed variation in
+
+For instance next equation can be used:
+
+$$
+Y_t = \beta_0 + \beta_1 X_t + \beta_2 Z_t + \epsilon
+$$
+
+Where:\
+$Y_t$ - `new_deaths_smoothed_per_million` on day $t$\
+$X_t$ - `people_fully_vaccinated_per_hundred` on day $t$\
+$Z_t$ - `new_cases_smoothed_per_million` on day $t$\
+
+### Adding lag
+
+Another way to improve the model is to add a time lag between vaccination and its effect on deaths. Since vaccines do not produce immediate protection, the impact on mortality is typically observed after a delay of several weeks. By including a lagged version of the vaccination variable, the model can more accurately capture the delayed effect of vaccination on reducing deaths.
+
+For instance next equation can be used:\
+$$
+Y_t = \beta_0 + \beta_1 X_{t-k} + \epsilon
+$$
+
+Where:\
+$Y_t$ – `new_deaths_smoothed_per_million` on day $t$\
+$X_{t-k}$ – `people_fully_vaccinated_per_hundred` on day $t-k$, representing the vaccination level lagged by $k$ days
+
+### Panel regression
+
+Panel regression is one of the most robust methods for testing our hypothesis and is commonly used in real-world analysis with panel data. It allows us to analyze data across multiple countries and over time simultaneously. This method can control for unobserved country-specific effects, such as development level, average age, or geographic location. As a result, it provides more reliable estimates of the effect of vaccination on deaths.
+
+To see the results from a panel regression model, we conducted a test using a fixed effects model, which accounts for both `people_fully_vaccinated_per_hundred` and `new_cases_smoothed_per_million`.
+
+```{r}
+model <- feols(
+  new_deaths_smoothed_per_million ~ 
+  people_fully_vaccinated_per_hundred + new_cases_smoothed_per_million |
+  iso_code + date,
+  data = df_interpolated
+)
+
+print(summary(model))
+```
+
+The estimated coefficient for vaccination is less than $0$ and the p-value is extremely small, so we reject $H_0$. This supports the results obtained from our simple linear regression model.
+
+Further discussion of the model mechanics or additional results will not be provided here, as it is quite complex and beyond the scope of this P&S course.
+
+# Our second hypothesis
 
 In the graph "Relationships between population age and Covid-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
