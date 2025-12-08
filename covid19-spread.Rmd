@@ -12,6 +12,7 @@ library(knitr)
 library(zoo)
 library(tidyr)
 library(fixest)
+library(readr)
 ```
 
 ### Team members
@@ -22,7 +23,7 @@ library(fixest)
 
 -   **Iryna Svyrydenko**
 
-# Statistical Analysis of COVID-19 Spread
+## Statistical Analysis of COVID-19 Spread
 
 ### The aim of this project is to analyze open data about Covid-19.
 
@@ -35,24 +36,21 @@ For this we are using such random variables:
 -   `new_cases_smoothed_per_million` - new confirmed cases of COVID-19 (7-day smoothed) per 1,000,000 people;
 -   `new_deaths_smoothed_per_million` - new deaths attributed to COVID-19 (7-day smoothed) per 1,000,000 people;
 -   `people_fully_vaccinated_per_hundred` - total number of people who received all doses prescribed by the initial vaccination protocol per 100 people in the total population;
--   `stringency_index` - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response).
-
-### Handling of the missing data
-
-Missing data in columns corresponding to new cases and deaths was already handled by the authors of the dataset. To create smoothed columns, a 7-day rolling average was used. A 7-day rolling average is calculated for each day using data from that day and the previous six days. If the current day's value is missing, the average is computed from the available data within that window. This helps handle missing data and reduce artificial spikes (for example, fewer cases may be reported on weekends, while on Monday cases from the weekend are reported, creating a spike).
-
-## Data preparation for visualization
+-   `total_deaths_per_million` - total deaths attributed to COVID-19 per 1,000,000 people. Counts can include probable deaths, where reported;
+-   `stringency_index` - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response);
+-   `aged_65_older` - share of population that is 65 years and older, most recent year
+    available;
+-   `date` - date of observation;
+-   `location` - geographical locationю
 
 ```{r}
-df <- read.csv("owid-covid-data.csv")
-head(df)
+{df <- read.csv("owid-covid-data.csv")}
+
 ```
 
 ```{r}
-# selected_countries <- c("World", "Ukraine", "United States",
-#                         "Brazil", "Australia", "France")
-
-selected_countries <- c("World", "United States", "India", "Sweden", "Congo", "Brazil")
+selected_countries <- c("World", "Ukraine", "United States",
+                        "Brazil", "Australia", "France")
 
 df_filtered <- df[df$location %in% selected_countries, ]
 
@@ -62,7 +60,7 @@ df_small <- df_filtered[, c(
   "new_cases_smoothed_per_million",
   "new_deaths_smoothed_per_million",
   "people_fully_vaccinated_per_hundred",
-  "total_deaths_per_million"
+  "stringency_index"
 )]
 df_small$date <- as.Date(df_small$date)
 kable(head(df_small, 10), caption = "Preview of Filtered COVID-19 Data")
@@ -77,8 +75,8 @@ ggplot(df_small, aes(x = date,
     scale_color_manual(values = c(
     "Australia" = "#E41A1C",      
     "Brazil" = "#377EB8",         
-    "Greece" = "#4DAF4A",         
-    "Congo" = "#984EA3",        
+    "France" = "#4DAF4A",         
+    "Ukraine" = "#984EA3",        
     "United States" = "#FF7F00",  
     "World" = "black"             
   )) +
@@ -175,16 +173,24 @@ On this graph we tried to get initial insight about impact of vaccines on a deat
 
 ```{r}
 df_hypothesis2 <- df %>%
-  filter(!is.na(aged_65_older), 
-         !is.na(new_deaths_smoothed_per_million),
-         !is.na(continent), continent != "") %>%
+  # Remove aggregate regions (keep only actual countries)
+  filter(!grepl("^OWID_", iso_code)) %>%
+  
+  # Group and Summarize
   group_by(location) %>%
   summarise(
-    aged_65_older = max(aged_65_older, na.rm = TRUE),
-    total_deaths_per_million = max(total_deaths_per_million, na.rm = TRUE)
-  )
+    aged_65_older = mean(aged_65_older, na.rm = TRUE),
+    # Warning: If a country has NO data, this returns -Inf (Negative Infinity)
+    total_deaths_final = max(total_deaths_per_million, na.rm = TRUE)
+  ) %>%
+  
+  # --- THE FIX ---
+  # Remove rows where total_deaths_final is Infinity (-Inf) or NaN
+  # This cleans up the countries that had no death data.
+  filter(is.finite(total_deaths_final)) %>%
+  filter(!is.na(aged_65_older))
 
-ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
+ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_final)) +
   geom_point(alpha = 0.6, color = "darkgreen") +
   labs(
     title = "Relationships between population age and Covid-19 mortality",
@@ -196,25 +202,23 @@ ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
 
 In this graph the X-axis shows the percentage of the people over the age of 65 `aged_65_older`, and Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
-# Insights
-
--   Across all selected countries, we observe several waves of COVID-19 infections, with the strongest and most synchronized global surge occurring in early 2022.
-
--   All countries began vaccination campaigns around early 2021, but the speed of rollout differed substantially.
-
--   Death rates follow a similar wave pattern as cases but with generally smaller magnitudes, and they also show a sharp decline after early 2022.
-
--   After 2022, both case numbers and death numbers drop significantly across all countries, indicating a clear long-term reduction in COVID-19 transmission and severity.
-
 # Hypotheses
 
-# Our first hypothesis
+### Our first hypothesis
 
 From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed that countries with a higher percentage of fully vaccinated people tend to have points closer to the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
 
 $H_0$: Vaccination rate has no effect on death rate.
 
 $H_1$: Increasing vaccination rate reduces the death rate.
+
+### Our second hypothesis
+
+In the graph "Relationships between population age and COVID-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
+
+$H_0$: The proportion of people over 65 in single country doesn't affect COVID-19 death rates.
+
+$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates.
 
 # Testing first hypothesis
 
@@ -393,7 +397,7 @@ $t_\alpha$ - quantile of t-student distribution of level $\alpha$
 
 For next tests we conducted we are choosing maximal probability of type I error $\alpha=0.01$. If p-value of a test is smaller than $0.01$ we are rejecting $H_0$
 
-Since our model can be applied only for a single country/region we have choosen next: world, USA, India, Sweden, Congo, Brazil. We were trying to choose countries with different development levels and from different regions to get more reliable insight.
+Since our model can be applied only for a single country/region we have chosen next: world, USA, India, Sweden, Congo, Brazil. We were trying to choose countries with different development levels and from different regions to get more reliable insight.
 
 ### World
 
@@ -596,10 +600,104 @@ The estimated coefficient for vaccination is less than $0$ and the p-value is ex
 
 Further discussion of the model mechanics or additional results will not be provided here, as it is quite complex and beyond the scope of this P&S course.
 
-# Our second hypothesis
+# Testing the second hypothesis
 
-In the graph "Relationships between population age and Covid-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
+## Data preparation for testing the second hypothesis
 
-$H_0$: Countries with a higher proportion of people over 65 have higher COVID-19 death rates..
+For second hypothesis we have already prepared the data. Here we use the same data as we used while visualizing relationship between people over 65 and total deaths in the country. I will duplicate the code I used above to comment it:
 
-$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates..
+```{r}
+{df <- read.csv("owid-covid-data.csv")}
+```
+
+```{r}
+df_hypothesis2 <- df %>%
+  # Remove aggregate regions (keep only actual countries)
+  filter(!grepl("^OWID_", iso_code)) %>%
+  #filter(!location %in% c("Turkmenistan", "North Korea")) %>%
+  
+  # Group and Summarize
+  group_by(location) %>%
+  summarise(
+    aged_65_older_mean = mean(aged_65_older, na.rm = TRUE),
+    # Warning: If a country has NO data, this returns -Inf (Negative Infinity)
+    total_deaths_final = max(total_deaths_per_million, na.rm = TRUE)
+  ) %>%
+  
+  # Remove rows where total_deaths_final is Infinity (-Inf) or NaN
+  # This cleans up the countries that had no death data.
+  filter(is.finite(total_deaths_final)) %>%
+  filter(!is.na(aged_65_older_mean)) %>%
+  filter(total_deaths_final > 0)
+```
+
+In this code we remove aggregate regions (keep only actual countries) as it was done during data preparation for the first hypothesis. Also we get rid of countries which doesn't have reports about deaths caused by COVID-19: Turkmenistan, North Korea, Hong Kong, etc.
+
+# Testing
+
+## Linear regression
+
+As for the first for second hypothesis we also use simple linear regression model based on data from each country. `total_deaths_final` - dependent variable and `aged_over_65` - independent.
+
+Equation:
+
+$$ Y = b_0 + b_1 X + \epsilon $$
+
+Where:\
+$Y$ - `total_deaths_final` on the last day of observations\
+$X$ - `aged_65_older`\
+$b_0$ - intercept\
+$b_1$ - slope, coefficient we are testing for being statistically significantly less than 0\
+$\epsilon$ - error term, it represents the unexplained variation in death rates that cannot be attributed to the age of the population.
+
+**Hypothesis:**
+
+$H_0$: $b_1 = 0$.
+
+$H_1$: $b_1 > 0$.
+
+Estimator for coefficient b1, estimator for the sum of squared residuals, estimator for variance, test statistic under $H_0$ and critical region are calculated in the same way as for Hypothesis 1
+
+As we mentioned earlier we are choosing maximal probability of type I error $\alpha=0.01$. If p-value of a test is smaller than $0.01$ we are rejecting $H_0$.
+
+Our model is applied for all countries from the dataset which contain information about deaths of COVID-19.
+
+### World
+
+```{r}
+model2 <- lm(total_deaths_final ~ aged_65_older_mean, data=df_hypothesis2)
+summary(model2)
+```
+
+### Visualization
+
+```{r}
+ggplot(df_hypothesis2, aes(x = aged_65_older_mean, y = total_deaths_final)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(
+    title = "Relationships between population age and Covid-19 mortality",
+    x = "Percentage of people over the age of 65",
+    y = "New deaths smoothed per million"
+  ) +
+  theme_minimal()
+```
+
+## Results
+
+For the world-level data, the estimated slope coefficient for elder people (over 65) $\approx 154$ and p-value is less than 0.01 that's why we can reject the $H_0$ and conclude that, in the aggregated global series, higher percentage of people aged over 65 is statistically associated with higher death rates.
+
+## Ways to improve a model
+
+### Multiple regression
+
+Instead of using one random variable Age ($X_1$), we can add other factors available in our dataset, such as `gdp_per_capita`, `population_density` and `people_fully_vaccinated_per_hundred`, etc.
+
+For instance next equation can be used:
+
+$$ Y = b_0 + b_1 X_1 + b_2 X_2 + \epsilon $$
+
+Where:\
+$Y$ - `total_deaths_final` on the last day of observations\
+$X_1$ - `aged_65_older`\
+$X_2$ - `population_density`
