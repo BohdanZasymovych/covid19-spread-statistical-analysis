@@ -25,9 +25,14 @@ library(readr)
 
 ## Statistical Analysis of COVID-19 Spread
 
-### The aim of this project is to analyze open data about Covid-19.
+## Aim
+The aim of this project is to analyze open data on COVID-19.
+In particular, we aim to test whether vaccination reduces death rates and whether a higher average age of the population in a country is associated with a higher total number of deaths.
 
-For this we are using the dataset from the collection of the COVID-19 data maintained by Our World in Data (<https://github.com/owid/covid-19-data/tree/master>). The data is gathered from official resources (national governments and ministries of Health, worldwide organizations (UN, WHO)).
+
+## Dataset description
+
+For this we are using the dataset from the collection of the COVID-19 data maintained by Our World in Data (<https://github.com/owid/covid-19-data/tree/master>). The data is gathered from official resources (national governments and ministries of Health, worldwide organizations (UN, WHO).
 
 We decided to investigate the connection between vaccination and mortality.
 
@@ -37,20 +42,23 @@ For this we are using such random variables:
 -   `new_deaths_smoothed_per_million` - new deaths attributed to COVID-19 (7-day smoothed) per 1,000,000 people;
 -   `people_fully_vaccinated_per_hundred` - total number of people who received all doses prescribed by the initial vaccination protocol per 100 people in the total population;
 -   `total_deaths_per_million` - total deaths attributed to COVID-19 per 1,000,000 people. Counts can include probable deaths, where reported;
--   `stringency_index` - Government Response Stringency Index: composite measure based on 9 response indicators including school closures, workplace closures, and travel bans, rescaled to a value from 0 to 100 (100 = strictest response);
--   `aged_65_older` - share of population that is 65 years and older, most recent year
-    available;
+-   `aged_65_older` - share of population that is 65 years and older, most recent year available;
 -   `date` - date of observation;
--   `location` - geographical locationю
+-   `location` - name of a country or of a region
+-   `iso_code` - universal iso code of a country
+
+### Handling of the missing data in the dataser
+
+Missing data in columns corresponding to new cases and deaths was already handled by the authors of the dataset. To create smoothed columns, a 7-day rolling average was used. A 7-day rolling average is calculated for each day using data from that day and the previous six days. If the current day's value is missing, the average is computed from the available data within that window. This helps handle missing data and reduce artificial spikes (for example, fewer cases may be reported on weekends, while on Monday cases from the weekend are reported, creating a spike).
+
+## Data preparation for visualization
 
 ```{r}
-{df <- read.csv("owid-covid-data.csv")}
-
+df <- read.csv("owid-covid-data.csv")
 ```
 
 ```{r}
-selected_countries <- c("World", "Ukraine", "United States",
-                        "Brazil", "Australia", "France")
+selected_countries <- c("World", "United States", "India", "Sweden", "Kenya", "Brazil")
 
 df_filtered <- df[df$location %in% selected_countries, ]
 
@@ -60,11 +68,10 @@ df_small <- df_filtered[, c(
   "new_cases_smoothed_per_million",
   "new_deaths_smoothed_per_million",
   "people_fully_vaccinated_per_hundred",
-  "stringency_index"
+  "total_deaths_per_million"
 )]
 df_small$date <- as.Date(df_small$date)
 kable(head(df_small, 10), caption = "Preview of Filtered COVID-19 Data")
-
 ```
 
 ```{r, fig.width=14, fig.height=10}
@@ -73,12 +80,12 @@ ggplot(df_small, aes(x = date,
                         color = location)) +
   geom_line(linewidth = 1, na.rm = TRUE) +
     scale_color_manual(values = c(
-    "Australia" = "#E41A1C",      
-    "Brazil" = "#377EB8",         
-    "France" = "#4DAF4A",         
-    "Ukraine" = "#984EA3",        
-    "United States" = "#FF7F00",  
-    "World" = "black"             
+    "World" = "#E41A1C",      
+    "United States" = "#377EB8",         
+    "India" = "#4DAF4A",         
+    "Sweden" = "#984EA3",        
+    "Kenya" = "#FF7F00",  
+    "Brazil" = "black"             
   )) +
   
   facet_wrap(~location, scales = "free_y", ncol = 2) +
@@ -96,8 +103,18 @@ This graph shows change of the `new_cases_smoothed_per_milion` random variable w
 ggplot(df_small, aes(x = date,
                      y = people_fully_vaccinated_per_hundred,
                      color = location)) +
-  geom_line(size = 1.2, na.rm = TRUE) +
-  scale_color_brewer(palette = "Set1") +
+  geom_line(linewidth = 1.2) +
+  geom_point(data = subset(df_small, location %in% c("Sweden","Congo")), 
+             aes(x = date, y = people_fully_vaccinated_per_hundred), 
+             size = 1.5, na.rm = TRUE) +
+  scale_color_manual(values = c(
+    "World" = "#E41A1C",      
+    "United States" = "#377EB8",         
+    "India" = "#4DAF4A",         
+    "Sweden" = "#984EA3",        
+    "Kenya" = "#FF7F00",  
+    "Brazil" = "black"             
+  )) +
   theme_minimal(base_size = 16) +
   labs(title = "Vaccination Progress in Selected Countries",
        x = "Date",
@@ -119,12 +136,12 @@ ggplot(df_small, aes(x = date,
   facet_wrap(~ location, scales = "free_y", ncol = 2) +
   theme_minimal(base_size = 16) +
     scale_color_manual(values = c(
-    "Australia"      = "#E41A1C",   
-    "Brazil"         = "#377EB8",  
-    "France"         = "#4DAF4A",   
-    "Ukraine"        = "#984EA3",   
-    "United States"  = "#FF7F00",   
-    "World"          = "black"     
+    "World" = "#E41A1C",      
+    "United States" = "#377EB8",         
+    "India" = "#4DAF4A",         
+    "Sweden" = "#984EA3",        
+    "Congo" = "#FF7F00",  
+    "Brazil" = "black" 
   )) +
   labs(
     title = "COVID-19 Death Trends by Country",
@@ -173,24 +190,16 @@ On this graph we tried to get initial insight about impact of vaccines on a deat
 
 ```{r}
 df_hypothesis2 <- df %>%
-  # Remove aggregate regions (keep only actual countries)
-  filter(!grepl("^OWID_", iso_code)) %>%
-  
-  # Group and Summarize
+  filter(!is.na(aged_65_older), 
+         !is.na(new_deaths_smoothed_per_million),
+         !is.na(continent), continent != "") %>%
   group_by(location) %>%
   summarise(
-    aged_65_older = mean(aged_65_older, na.rm = TRUE),
-    # Warning: If a country has NO data, this returns -Inf (Negative Infinity)
-    total_deaths_final = max(total_deaths_per_million, na.rm = TRUE)
-  ) %>%
-  
-  # --- THE FIX ---
-  # Remove rows where total_deaths_final is Infinity (-Inf) or NaN
-  # This cleans up the countries that had no death data.
-  filter(is.finite(total_deaths_final)) %>%
-  filter(!is.na(aged_65_older))
+    aged_65_older = max(aged_65_older, na.rm = TRUE),
+    total_deaths_per_million = max(total_deaths_per_million, na.rm = TRUE)
+  )
 
-ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_final)) +
+ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_per_million)) +
   geom_point(alpha = 0.6, color = "darkgreen") +
   labs(
     title = "Relationships between population age and Covid-19 mortality",
@@ -202,6 +211,16 @@ ggplot(df_hypothesis2, aes(x = aged_65_older, y = total_deaths_final)) +
 
 In this graph the X-axis shows the percentage of the people over the age of 65 `aged_65_older`, and Y-axis shows the smoothed number of new deaths per million people `new_deaths_smoothed_per_million`.
 
+# Insights
+
+-   Across all selected countries, we observe several waves of COVID-19 infections, with the strongest and most synchronized global surge occurring in early 2022.
+
+-   All countries began vaccination campaigns around early 2021, but the speed of rollout differed substantially.
+
+-   Death rates follow a similar wave pattern as cases but with generally smaller magnitudes, and they also show a sharp decline after early 2022.
+
+-   After 2022, both case numbers and death numbers drop significantly across all countries, indicating a clear long-term reduction in COVID-19 transmission and severity.
+
 # Hypotheses
 
 ### Our first hypothesis
@@ -211,14 +230,6 @@ From the graph "Vaccination vs COVID-19 Death Rate on 2021-08-01", we observed t
 $H_0$: Vaccination rate has no effect on death rate.
 
 $H_1$: Increasing vaccination rate reduces the death rate.
-
-### Our second hypothesis
-
-In the graph "Relationships between population age and COVID-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
-
-$H_0$: The proportion of people over 65 in single country doesn't affect COVID-19 death rates.
-
-$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates.
 
 # Testing first hypothesis
 
@@ -397,7 +408,7 @@ $t_\alpha$ - quantile of t-student distribution of level $\alpha$
 
 For next tests we conducted we are choosing maximal probability of type I error $\alpha=0.01$. If p-value of a test is smaller than $0.01$ we are rejecting $H_0$
 
-Since our model can be applied only for a single country/region we have chosen next: world, USA, India, Sweden, Congo, Brazil. We were trying to choose countries with different development levels and from different regions to get more reliable insight.
+Since our model can be applied only for a single country/region we have chosen next: world, USA, India, Sweden, Kenya, Brazil. We were trying to choose countries with different development levels and from different regions to get more reliable insight.
 
 ### World
 
@@ -491,10 +502,10 @@ abline(model, col = "red", lwd = 2)
 
 Estimated coefficient is less than $0$ ($\approx -0.052$), p-value is significantly smaller than $0.01$ ($\approx <2e-16$). We reject $H_0$.
 
-### Congo
+### Kenya
 
 ```{r}
-df_country <- subset(df_interpolated, iso_code == "COD")
+df_country <- subset(df_interpolated, iso_code == "KEN")
 
 model <- lm(new_deaths_smoothed_per_million ~ people_fully_vaccinated_per_hundred, data=df_country)
 print(summary(model))
@@ -512,7 +523,7 @@ plot(df_country$people_fully_vaccinated_per_hundred,
 abline(model, col = "red", lwd = 2)
 ```
 
-Estimated coefficient is greater than $0$ ($\approx 0.015$), but p-value is significantly higher than $0.01$ ($\approx 0.67$). We do not reject $H_0$.
+Estimated coefficient is less than $0$ ($\approx -0.029$), p-value is significantly smaller than $0.01$ ($\approx 5.72e-14$). We reject $H_0$.
 
 ### Brazil
 
@@ -541,7 +552,7 @@ Estimated coefficient is less than $0$ ($\approx -0.124$), p-value is significan
 
 For the world-level data, the estimated slope coefficient for vaccination is negative and the p-value is far below $0.01$. Therefore, we reject $H_0$ and conclude that, in the aggregated global series, higher vaccination levels are statistically associated with lower death rates.
 
-For individual countries, the same test rejects $H_0$ for all countries except Congo. Only Congo shows a p-value above $0.01$, so for this country we do not reject $H_0$.
+For all counties we got estimated coefficients less than 0 and small p-values. From this we cannot generalize results to all countries, but still we have some evidence suggesting that higher vaccination rates are associated with lower COVID-19 death rates in the analyzed sample, indicating a protective effect of vaccines in these contexts.
 
 ## Biases of the Model
 
@@ -600,6 +611,14 @@ The estimated coefficient for vaccination is less than $0$ and the p-value is ex
 
 Further discussion of the model mechanics or additional results will not be provided here, as it is quite complex and beyond the scope of this P&S course.
 
+# Our second hypothesis
+
+In the graph "Relationships between population age and COVID-19 mortality", we noticed that countries with a higher percentage of people over 65 tend to have points further from the X-axis. Based on this observation, we formulated the following hypothesis to test whether this pattern occurred by chance or there is general trend.
+
+$H_0$: The proportion of people over 65 in single country doesn't affect COVID-19 death rates.
+
+$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates.
+
 # Testing the second hypothesis
 
 ## Data preparation for testing the second hypothesis
@@ -607,25 +626,19 @@ Further discussion of the model mechanics or additional results will not be prov
 For second hypothesis we have already prepared the data. Here we use the same data as we used while visualizing relationship between people over 65 and total deaths in the country. I will duplicate the code I used above to comment it:
 
 ```{r}
-{df <- read.csv("owid-covid-data.csv")}
+df <- read.csv("owid-covid-data.csv")
 ```
 
 ```{r}
 df_hypothesis2 <- df %>%
-  # Remove aggregate regions (keep only actual countries)
   filter(!grepl("^OWID_", iso_code)) %>%
-  #filter(!location %in% c("Turkmenistan", "North Korea")) %>%
   
-  # Group and Summarize
   group_by(location) %>%
   summarise(
     aged_65_older_mean = mean(aged_65_older, na.rm = TRUE),
-    # Warning: If a country has NO data, this returns -Inf (Negative Infinity)
     total_deaths_final = max(total_deaths_per_million, na.rm = TRUE)
   ) %>%
   
-  # Remove rows where total_deaths_final is Infinity (-Inf) or NaN
-  # This cleans up the countries that had no death data.
   filter(is.finite(total_deaths_final)) %>%
   filter(!is.na(aged_65_older_mean)) %>%
   filter(total_deaths_final > 0)
