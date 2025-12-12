@@ -668,7 +668,13 @@ $H_0$: $b_1 = 0$.
 
 $H_1$: $b_1 > 0$.
 
-Estimator for coefficient b1, estimator for the sum of squared residuals, estimator for variance, test statistic under $H_0$ and critical region are calculated in the same way as for Hypothesis 1
+Estimator for coefficient b1, estimator for the sum of squared residuals, estimator for variance and test statistic under $H_0$ are calculated in the same way as for Hypothesis 1
+
+**Critical region:**
+
+$$
+C_\alpha = \left \{ \textbf{x} \in R^n \; | \; t(\textbf{x}) > t_{1-\alpha} \right \}
+$$
 
 As we mentioned earlier we are choosing maximal probability of type I error $\alpha=0.01$. If p-value of a test is smaller than $0.01$ we are rejecting $H_0$.
 
