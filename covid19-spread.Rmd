@@ -26,9 +26,8 @@ library(readr)
 ## Statistical Analysis of COVID-19 Spread
 
 ## Aim
-The aim of this project is to analyze open data on COVID-19.
-In particular, we aim to test whether vaccination reduces death rates and whether a higher average age of the population in a country is associated with a higher total number of deaths.
 
+The aim of this project is to analyze open data on COVID-19. In particular, we aim to test whether vaccination reduces death rates and whether a higher average age of the population in a country is associated with a higher total number of deaths.
 
 ## Dataset description
 
@@ -392,7 +391,7 @@ $$
 **Test statistic under** $H_0$:
 
 $$
-T(\textbf{X}) = \frac{\hat{\beta}_1}{\hat{\sigma}} \sim \mathcal{T}_{T-2}
+T(\textbf{X}) = \sqrt{S_{XX}} \frac{\hat{\beta}_1}{\hat{\sigma}} \sim \mathcal{T}_{T-2}
 $$
 
 **Critical region:**
@@ -617,7 +616,7 @@ In the graph "Relationships between population age and COVID-19 mortality", we n
 
 $H_0$: The proportion of people over 65 in single country doesn't affect COVID-19 death rates.
 
-$H_1$: Countries with a higher proportion of people over 65 have lower COVID-19 death rates.
+$H_1$: Countries with a higher proportion of people over 65 have higher COVID-19 death rates.
 
 # Testing the second hypothesis
 
